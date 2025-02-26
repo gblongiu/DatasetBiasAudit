@@ -489,34 +489,34 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
                 explanation_text += "Error computing SHAP summary: " + str(e) + "\n\n"
             # Append LIME explanation for the sample instance
             try:
-                lime_exp = lime_explainer.explain_instance(
-                    sample_features.values[0], model.predict, num_features=4
-                )
+                lime_exp = lime_explainer.explain_instance(sample_features.values[0], model.predict, num_features=4)
                 explanation_text += "Local Explanation (LIME):\n" + str(lime_exp.as_list())
             except Exception as e:
                 explanation_text += "Error computing LIME explanation: " + str(e)
 
+            # Build an insights panel with explanation text above the graphs
+            explanation_component = html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"})
+            # Arrange the two graphs side by side using dbc.Row and dbc.Col
+            graphs_row = dbc.Row([
+                dbc.Col(dcc.Graph(figure=shap_fig, config={"displayModeBar": False}), md=6),
+                dbc.Col(dcc.Graph(figure=lime_fig, config={"displayModeBar": False}), md=6)
+            ], style={"marginTop": "20px"})
+
             model_panel = dbc.Card(
                 dbc.CardBody([
                     html.H5("AI Model Insights", className="card-title"),
-                    html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"}),
-                    html.Br(),
-                    dcc.Graph(figure=shap_fig, config={"displayModeBar": False}),
-                    dcc.Graph(figure=lime_fig, config={"displayModeBar": False})
+                    explanation_component,
+                    graphs_row
                 ]),
                 color="secondary", inverse=True,
-                style={"boxShadow": "0 4px 12px rgba(0,0,0,0.25)", "borderRadius": "10px"}
+                style={"boxShadow": "0 4px 12px rgba(0,0,0,0.25)", "borderRadius": "10px", "marginBottom": "20px"}
             )
-            # Wrap the card in a container with a fixed height and vertical scrolling
-            return dbc.Container(
-                [model_panel],
-                style={"height": "80vh", "overflowY": "auto", "paddingTop": "20px"}
-            )
+            # Return the model insights card inside a container that auto-adjusts its height
+            return dbc.Container([model_panel])
         except Exception as e:
             error_message = f"Error in Model Insights: {str(e)}"
             return dbc.Container(
-                [html.Pre(error_message, style={"color": "red", "whiteSpace": "pre-wrap"})],
-                style={"height": "80vh", "overflowY": "auto", "paddingTop": "20px"}
+                [html.Pre(error_message, style={"color": "red", "whiteSpace": "pre-wrap"})]
             )
 
     return html.Div("No tab selected", className="text-center")
