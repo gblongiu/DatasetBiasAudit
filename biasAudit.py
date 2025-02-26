@@ -17,7 +17,7 @@ from flask_caching import Cache
 # -------------------------------
 # Data Loading and Preprocessing
 # -------------------------------
-# Use relative paths (assumes the "student" folder is in the project directory)
+# Use relative paths (assumes the "student" folder is in your project directory)
 por_path = "student/student-por.csv"
 mat_path = "student/student-mat.csv"
 df_por = pd.read_csv(por_path, sep=";")
@@ -48,7 +48,6 @@ gender_options.insert(0, {'label': 'All', 'value': 'All'})
 # -------------------------------
 # AI Model Integration & Fairness Calculations
 # -------------------------------
-# Define features and target
 features = ['G1_avg', 'studytime_avg', 'absences_avg', 'age']
 X = df_merged[features]
 y = df_merged['G3_avg']
@@ -87,11 +86,6 @@ lime_fig = px.bar(x=[f for f, w in lime_exp.as_list()],
                   title="Local Explanation (LIME) for a Sample Prediction")
 
 # -------------------------------
-# Caching Setup (using SimpleCache for demonstration)
-# -------------------------------
-cache = Cache(app.server, config={'CACHE_TYPE': 'SimpleCache'})
-
-# -------------------------------
 # Dash App Initialization
 # -------------------------------
 external_stylesheets = [dbc.themes.LUX]
@@ -99,10 +93,15 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
 
 # -------------------------------
+# Caching Setup (after app creation)
+# -------------------------------
+cache = Cache(app.server, config={'CACHE_TYPE': 'SimpleCache'})
+
+# -------------------------------
 # Dashboard Layout with Additional Tabs for Fairness and Model Insights
 # -------------------------------
 app.layout = dbc.Container([
-    dcc.Store(id="dark-mode-store", data=False),  # Store for dark mode
+    dcc.Store(id="dark-mode-store", data=False),
 
     dbc.NavbarSimple(
         children=[
@@ -121,6 +120,7 @@ app.layout = dbc.Container([
         fixed="top",
         style={"boxShadow": "0 4px 12px rgba(0,0,0,0.2)"}
     ),
+
     html.Br(), html.Br(), html.Br(),
 
     dbc.Offcanvas(
@@ -310,6 +310,7 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
 
     template = "plotly_dark" if dark_mode else "plotly_white"
 
+    # Overview Tab
     if active_tab == "tab-overview":
         card1 = dbc.Card(
             dbc.CardBody([
@@ -362,6 +363,7 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         )
         return dbc.Container([cards_row, dbc.Row([dbc.Col(data_table, width=12)])])
 
+    # Histogram Tab
     elif active_tab == "tab-hist":
         hist_fig = px.histogram(
             filtered_df,
@@ -380,6 +382,7 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         )
         return dcc.Graph(figure=hist_fig, config={"displayModeBar": False})
 
+    # Scatter Plot Tab
     elif active_tab == "tab-scatter":
         scatter_fig = px.scatter(
             filtered_df,
@@ -398,6 +401,7 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         )
         return dcc.Graph(figure=scatter_fig, config={"displayModeBar": False})
 
+    # Box Plot Tab
     elif active_tab == "tab-box":
         box_fig = px.box(
             filtered_df,
@@ -415,6 +419,7 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         )
         return dcc.Graph(figure=box_fig, config={"displayModeBar": False})
 
+    # Data Table Tab
     elif active_tab == "tab-table":
         display_cols = common_columns + [grade_col, g1_col, "age", "sex", "studytime_avg", "absences_avg"]
         if dark_mode:
@@ -439,6 +444,7 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         return dbc.Container([html.H4("Filtered Data", className="text-center mb-3",
                                        style={"color": "#FFFFFF" if dark_mode else "#000000"}), table])
 
+    # Fairness Metrics Tab
     elif active_tab == "tab-fairness":
         fairness_metrics = html.Div([
             html.H4("Fairness Metrics", className="text-center mb-3", style={"color": "#FFFFFF" if dark_mode else "#000000"}),
@@ -449,9 +455,9 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         ])
         return dbc.Container(fairness_metrics)
 
+    # Model Insights Tab
     elif active_tab == "tab-model":
-        # Predictive model insights tab
-        sample_index = 0  # For demonstration, take the first record
+        sample_index = 0  # For demonstration, use the first record
         sample = df_merged.iloc[[sample_index]]
         sample_features = sample[features]
         prediction = model.predict(sample_features)[0]
@@ -483,6 +489,9 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
 
     return html.Div("No tab selected", className="text-center")
 
+# -------------------------------
+# Run the App
+# -------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
     app.run_server(debug=True, host="0.0.0.0", port=port)
