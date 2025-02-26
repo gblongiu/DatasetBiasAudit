@@ -4,15 +4,24 @@ from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State
 import pandas as pd
 import plotly.express as px
+import xgboost as xgb
+import shap
+from lime import lime_tabular
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
 from sklearn.utils import resample
+from flask_caching import Cache
+import os
 
 # -------------------------------
 # Data Loading and Preprocessing
 # -------------------------------
-por_path = "student/student-por.csv"   # Updated to relative path
-mat_path = "student/student-mat.csv"     # Updated to relative path
+# Use relative paths (assumes the "student" folder is in the project directory)
+por_path = "student/student-por.csv"
+mat_path = "student/student-mat.csv"
 df_por = pd.read_csv(por_path, sep=";")
 df_math = pd.read_csv(mat_path, sep=";")
+
 common_columns = ['school', 'sex', 'age', 'address', 'famsize', 'Pstatus',
                   'Medu', 'Fedu', 'Mjob', 'Fjob', 'reason', 'guardian']
 df_merged = pd.merge(df_math, df_por, on=common_columns, suffixes=('_mat', '_por'))
@@ -36,6 +45,50 @@ gender_options = [{'label': g, 'value': g} for g in sorted(df_merged['sex'].uniq
 gender_options.insert(0, {'label': 'All', 'value': 'All'})
 
 # -------------------------------
+# AI Model Integration & Fairness Calculations
+# -------------------------------
+# For demonstration, we will use a simplified feature set and train an XGBoost regressor
+features = ['G1_avg', 'studytime_avg', 'absences_avg', 'age']
+X = df_merged[features]
+y = df_merged['G3_avg']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+model = xgb.XGBRegressor(objective='reg:squarederror', random_state=42)
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+r2 = model.score(X_test, y_test)
+
+# Compute fairness metric: demographic parity difference by gender based on predictions
+df_merged['predicted_G3'] = model.predict(df_merged[features])
+female_avg = df_merged[df_merged['sex'] == 'F']['predicted_G3'].mean()
+male_avg = df_merged[df_merged['sex'] == 'M']['predicted_G3'].mean()
+demographic_parity_diff = abs(female_avg - male_avg)
+
+# SHAP explainability (global summary)
+explainer = shap.Explainer(model)
+shap_values = explainer(X_train)
+# For simplicity, we create a global SHAP summary using Plotly Express (this is an approximation)
+shap_mean_abs = [abs(shap_values[:, i]).mean() for i in range(len(features))]
+shap_df = pd.DataFrame({"Feature": features, "Mean Absolute SHAP Value": shap_mean_abs})
+shap_fig = px.bar(shap_df, x="Feature", y="Mean Absolute SHAP Value",
+                  title="Global Feature Importance (SHAP)")
+
+# LIME explainer (for a sample instance)
+lime_explainer = lime_tabular.LimeTabularExplainer(
+    X_train.values, feature_names=features, mode='regression'
+)
+# Pre-calculate a LIME explanation for the first instance of X_test
+lime_exp = lime_explainer.explain_instance(X_test.iloc[0].values, model.predict, num_features=4)
+lime_fig = px.bar(x=[f for f, w in lime_exp.as_list()],
+                  y=[w for f, w in lime_exp.as_list()],
+                  labels={"x": "Feature", "y": "Contribution"},
+                  title="Local Explanation (LIME) for a Sample Prediction")
+
+# -------------------------------
+# Caching Setup (using SimpleCache for demonstration)
+# -------------------------------
+cache = Cache(app.server, config={'CACHE_TYPE': 'SimpleCache'})
+
+# -------------------------------
 # Dash App Initialization
 # -------------------------------
 external_stylesheets = [dbc.themes.LUX]
@@ -43,7 +96,7 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
 
 # -------------------------------
-# Dashboard Layout
+# Dashboard Layout with Additional Tabs for Fairness and Model Insights
 # -------------------------------
 app.layout = dbc.Container([
     dcc.Store(id="dark-mode-store", data=False),  # Store for dark mode
@@ -140,7 +193,9 @@ app.layout = dbc.Container([
             dbc.Tab(label="Histogram", tab_id="tab-hist"),
             dbc.Tab(label="Scatter Plot", tab_id="tab-scatter"),
             dbc.Tab(label="Box Plot", tab_id="tab-box"),
-            dbc.Tab(label="Data Table", tab_id="tab-table")
+            dbc.Tab(label="Data Table", tab_id="tab-table"),
+            dbc.Tab(label="Fairness Metrics", tab_id="tab-fairness"),
+            dbc.Tab(label="Model Insights", tab_id="tab-model")
         ],
         className="mb-4"
     ),
@@ -162,7 +217,6 @@ app.layout = dbc.Container([
     id="main-container",
     style={"paddingTop": "100px", "backgroundColor": "#F8F9FA", "minHeight": "100vh"}
 )
-
 
 # -------------------------------
 # Callback for Dark Mode Toggle (updates container, footer, and tabs class)
@@ -188,7 +242,6 @@ def update_dark_mode(is_dark, current_style):
         tabs_class = "tabs-light"
     return new_style, is_dark, footer_style, tabs_class
 
-
 # -------------------------------
 # Callback to Update Offcanvas Filter Menu Class Based on Dark Mode
 # -------------------------------
@@ -198,7 +251,6 @@ def update_dark_mode(is_dark, current_style):
 )
 def update_offcanvas_class(dark_mode):
     return "dark-offcanvas" if dark_mode else ""
-
 
 # -------------------------------
 # Callback to Update Offcanvas Filter Menu Style Based on Dark Mode
@@ -215,7 +267,6 @@ def update_offcanvas_style(dark_mode):
         base_style.update({"backgroundColor": "#FFFFFF", "color": "#000000"})
     return base_style
 
-
 # -------------------------------
 # Callback to Toggle Offcanvas Filters
 # -------------------------------
@@ -228,7 +279,6 @@ def toggle_offcanvas(n_clicks, is_open):
     if n_clicks:
         return not is_open
     return is_open
-
 
 # -------------------------------
 # Callback to Render Tab Content
@@ -271,6 +321,7 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
 
     template = "plotly_dark" if dark_mode else "plotly_white"
 
+    # Overview Tab: Cards and summary table
     if active_tab == "tab-overview":
         card1 = dbc.Card(
             dbc.CardBody([
@@ -323,60 +374,64 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         )
         return dbc.Container([cards_row, dbc.Row([dbc.Col(data_table, width=12)])])
 
-    hist_fig = px.histogram(
-        filtered_df,
-        x=grade_col,
-        nbins=20,
-        title="Final Grade Distribution",
-        color="sex",
-        color_discrete_map={"F": "#FF6F61", "M": "#2E86C1"}
-    )
-    hist_fig.update_layout(
-        bargap=0.1,
-        xaxis_title="Final Grade",
-        yaxis_title="Count",
-        template=template,
-        margin=dict(l=40, r=40, t=50, b=40)
-    )
-
-    scatter_fig = px.scatter(
-        filtered_df,
-        x=g1_col,
-        y=grade_col,
-        title="Scatter Plot: First Period vs Final Grade",
-        color="sex",
-        color_discrete_map={"F": "#FF6F61", "M": "#2E86C1"},
-        hover_data=["age", "studytime_avg", "absences_avg"]
-    )
-    scatter_fig.update_layout(
-        xaxis_title="First Period Grade",
-        yaxis_title="Final Grade",
-        template=template,
-        margin=dict(l=40, r=40, t=50, b=50)
-    )
-
-    box_fig = px.box(
-        filtered_df,
-        x="sex",
-        y=grade_col,
-        title="Box Plot: Final Grade by Gender",
-        color="sex",
-        color_discrete_map={"F": "#FF6F61", "M": "#2E86C1"}
-    )
-    box_fig.update_layout(
-        xaxis_title="Gender",
-        yaxis_title="Final Grade",
-        template=template,
-        margin=dict(l=40, r=40, t=50, b=50)
-    )
-
+    # Histogram Tab
     if active_tab == "tab-hist":
+        hist_fig = px.histogram(
+            filtered_df,
+            x=grade_col,
+            nbins=20,
+            title="Final Grade Distribution",
+            color="sex",
+            color_discrete_map={"F": "#FF6F61", "M": "#2E86C1"}
+        )
+        hist_fig.update_layout(
+            bargap=0.1,
+            xaxis_title="Final Grade",
+            yaxis_title="Count",
+            template=template,
+            margin=dict(l=40, r=40, t=50, b=40)
+        )
         return dcc.Graph(figure=hist_fig, config={"displayModeBar": False})
-    elif active_tab == "tab-scatter":
+
+    # Scatter Plot Tab
+    if active_tab == "tab-scatter":
+        scatter_fig = px.scatter(
+            filtered_df,
+            x=g1_col,
+            y=grade_col,
+            title="Scatter Plot: First Period vs Final Grade",
+            color="sex",
+            color_discrete_map={"F": "#FF6F61", "M": "#2E86C1"},
+            hover_data=["age", "studytime_avg", "absences_avg"]
+        )
+        scatter_fig.update_layout(
+            xaxis_title="First Period Grade",
+            yaxis_title="Final Grade",
+            template=template,
+            margin=dict(l=40, r=40, t=50, b=50)
+        )
         return dcc.Graph(figure=scatter_fig, config={"displayModeBar": False})
-    elif active_tab == "tab-box":
+
+    # Box Plot Tab
+    if active_tab == "tab-box":
+        box_fig = px.box(
+            filtered_df,
+            x="sex",
+            y=grade_col,
+            title="Box Plot: Final Grade by Gender",
+            color="sex",
+            color_discrete_map={"F": "#FF6F61", "M": "#2E86C1"}
+        )
+        box_fig.update_layout(
+            xaxis_title="Gender",
+            yaxis_title="Final Grade",
+            template=template,
+            margin=dict(l=40, r=40, t=50, b=50)
+        )
         return dcc.Graph(figure=box_fig, config={"displayModeBar": False})
-    elif active_tab == "tab-table":
+
+    # Data Table Tab
+    if active_tab == "tab-table":
         display_cols = common_columns + [grade_col, g1_col, "age", "sex", "studytime_avg", "absences_avg"]
         if dark_mode:
             header_bg = "#2B2B2B"
@@ -398,12 +453,37 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
             page_size=15
         )
         return dbc.Container([html.H4("Filtered Data", className="text-center mb-3",
-                                      style={"color": "#FFFFFF" if dark_mode else "#000000"}), table])
-    else:
-        return html.Div("No tab selected", className="text-center")
+                                       style={"color": "#FFFFFF" if dark_mode else "#000000"}), table])
 
-import os
+    # Fairness Metrics Tab
+    if active_tab == "tab-fairness":
+        fairness_metrics = html.Div([
+            html.H4("Fairness Metrics", className="text-center mb-3", style={"color": "#FFFFFF" if dark_mode else "#000000"}),
+            html.P(f"Demographic Parity Difference (|Female Avg - Male Avg|): {demographic_parity_diff:.2f}",
+                   style={"color": "#FFFFFF" if dark_mode else "#000000", "textAlign": "center"}),
+            html.P(f"XGBoost Model R² Score: {r2:.2f}",
+                   style={"color": "#FFFFFF" if dark_mode else "#000000", "textAlign": "center"})
+        ])
+        return dbc.Container(fairness_metrics)
 
+    # Model Insights Tab
+    if active_tab == "tab-model":
+        model_insights = html.Div([
+            html.H4("Model Insights", className="text-center mb-3", style={"color": "#FFFFFF" if dark_mode else "#000000"}),
+            html.P(f"XGBoost Model Performance (R² Score): {r2:.2f}",
+                   style={"color": "#FFFFFF" if dark_mode else "#000000", "textAlign": "center"}),
+            dcc.Graph(figure=shap_fig, config={"displayModeBar": False}),
+            dcc.Graph(figure=lime_fig, config={"displayModeBar": False}),
+            html.P("Click on a student record (in the Data Table) for a detailed local explanation (LIME) in the future.",
+                   style={"color": "#FFFFFF" if dark_mode else "#000000", "textAlign": "center"})
+        ])
+        return dbc.Container(model_insights)
+
+    return html.Div("No tab selected", className="text-center")
+
+# -------------------------------
+# Run the App
+# -------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
     app.run_server(debug=True, host="0.0.0.0", port=port)
