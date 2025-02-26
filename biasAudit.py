@@ -466,16 +466,15 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         ])
         return dbc.Container(fairness_metrics)
 
-    # Model Insights Tab
+    # Model Insights Tab Callback Section
     elif active_tab == "tab-model":
-        # For demonstration, compute insights for the first record
-        sample_index = 0
+        sample_index = 0  # For demonstration, use the first record
         sample = df_merged.iloc[[sample_index]]
         sample_features = sample[features]
         prediction = model.predict(sample_features)[0]
-        explanation_text = f"Predicted Final Grade: {prediction:.1f}\n\n"
-        # Append SHAP global summary
-        try:
+
+        explanation_text = f"Predicted Final Grade: {prediction:.1f}\n"
+        if shap is not None:
             shap_summary = "Global Feature Importance (mean absolute SHAP values):\n"
             shap_mean_abs = [np.abs(shap_values.values[:, i]).mean() for i in range(len(features))]
             global_shap = pd.DataFrame({
@@ -484,27 +483,27 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
             }).sort_values(by='Mean Absolute SHAP Value', ascending=False)
             shap_summary += global_shap.to_string(index=False)
             explanation_text += shap_summary
-        except Exception as e:
-            explanation_text += "Error computing SHAP summary: " + str(e)
-        # Append LIME explanation for the sample instance
-        try:
+
+        if lime_explainer is not None:
             lime_exp = lime_explainer.explain_instance(sample_features.values[0], model.predict, num_features=4)
             explanation_text += "\n\nLocal Explanation (LIME):\n" + str(lime_exp.as_list())
-        except Exception as e:
-            explanation_text += "\n\nError computing LIME explanation: " + str(e)
-        # Build the insights panel with interactive graphs as well
+
         model_panel = dbc.Card(
             dbc.CardBody([
                 html.H5("AI Model Insights", className="card-title"),
-                html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"}),
-                html.Br(),
-                dcc.Graph(figure=shap_fig, config={"displayModeBar": False}),
-                dcc.Graph(figure=lime_fig, config={"displayModeBar": False})
+                html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"})
             ]),
-            color="secondary", inverse=True,
-            style={"boxShadow": "0 4px 12px rgba(0,0,0,0.25)", "borderRadius": "10px"}
+            color="secondary",
+            inverse=True,
+            style={
+                "boxShadow": "0 4px 12px rgba(0,0,0,0.25)",
+                "borderRadius": "10px",
+                "margin": "0",
+                "padding": "10px"
+            }
         )
-        return dbc.Container([model_panel])
+        # Return a container with no extra margin/padding so the content is immediately visible
+        return dbc.Container(model_panel, style={"margin": "0", "padding": "0"})
 
     return html.Div("No tab selected", className="text-center")
 
