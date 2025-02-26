@@ -63,5 +63,7 @@ tzdata==2025.1
 urllib3==2.3.0
 wcwidth==0.2.13
 Werkzeug==3.0.6
-xgboost==1.7.5
 zipp==3.21.0
+xgboost==1.7.5
+shap==0.41.0
+lime==0.2.0.1
