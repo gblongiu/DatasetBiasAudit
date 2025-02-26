@@ -66,35 +66,44 @@ female_avg = df_merged[df_merged['sex'] == 'F']['predicted_G3'].mean()
 male_avg = df_merged[df_merged['sex'] == 'M']['predicted_G3'].mean()
 demographic_parity_diff = abs(female_avg - male_avg)
 
+# Additional fairness metric: ratio of predicted averages (avoid division by zero)
+if male_avg != 0:
+    demographic_parity_ratio = female_avg / male_avg
+else:
+    demographic_parity_ratio = np.nan
+
 # SHAP explainability (global summary)
-explainer = shap.Explainer(model)
-shap_values = explainer(X_train)
-# Compute mean absolute SHAP values for each feature using the .values attribute
-shap_mean_abs = [np.abs(shap_values.values[:, i]).mean() for i in range(len(features))]
-shap_df = pd.DataFrame({"Feature": features, "Mean Absolute SHAP Value": shap_mean_abs})
-shap_fig = px.bar(shap_df, x="Feature", y="Mean Absolute SHAP Value",
-                  title="Global Feature Importance (SHAP)")
+try:
+    explainer = shap.Explainer(model)
+    shap_values = explainer(X_train)
+    shap_mean_abs = [np.abs(shap_values.values[:, i]).mean() for i in range(len(features))]
+    shap_df = pd.DataFrame({"Feature": features, "Mean Absolute SHAP Value": shap_mean_abs})
+    shap_fig = px.bar(shap_df, x="Feature", y="Mean Absolute SHAP Value",
+                      title="Global Feature Importance (SHAP)")
+except Exception as e:
+    shap_fig = px.bar(title="Global Feature Importance (SHAP) - Error computing SHAP values")
+    print("Error computing SHAP:", e)
 
 # LIME explainer for local explanations (for a sample instance)
-lime_explainer = lime_tabular.LimeTabularExplainer(
-    X_train.values, feature_names=features, mode='regression'
-)
-lime_exp = lime_explainer.explain_instance(X_test.iloc[0].values, model.predict, num_features=4)
-lime_fig = px.bar(x=[f for f, w in lime_exp.as_list()],
-                  y=[w for f, w in lime_exp.as_list()],
-                  labels={"x": "Feature", "y": "Contribution"},
-                  title="Local Explanation (LIME) for a Sample Prediction")
+try:
+    lime_explainer = lime_tabular.LimeTabularExplainer(
+        X_train.values, feature_names=features, mode='regression'
+    )
+    lime_exp = lime_explainer.explain_instance(X_test.iloc[0].values, model.predict, num_features=4)
+    lime_fig = px.bar(x=[f for f, w in lime_exp.as_list()],
+                      y=[w for f, w in lime_exp.as_list()],
+                      labels={"x": "Feature", "y": "Contribution"},
+                      title="Local Explanation (LIME) for a Sample Prediction")
+except Exception as e:
+    lime_fig = px.bar(title="Local Explanation (LIME) - Error computing LIME explanation")
+    print("Error computing LIME:", e)
 
 # -------------------------------
-# Dash App Initialization
+# Caching Setup (using SimpleCache for demonstration)
 # -------------------------------
 external_stylesheets = [dbc.themes.LUX]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
-
-# -------------------------------
-# Caching Setup (after app creation)
-# -------------------------------
 cache = Cache(app.server, config={'CACHE_TYPE': 'SimpleCache'})
 
 # -------------------------------
@@ -450,6 +459,8 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
             html.H4("Fairness Metrics", className="text-center mb-3", style={"color": "#FFFFFF" if dark_mode else "#000000"}),
             html.P(f"Demographic Parity Difference (|Female Avg - Male Avg|): {demographic_parity_diff:.2f}",
                    style={"color": "#FFFFFF" if dark_mode else "#000000", "textAlign": "center"}),
+            html.P(f"Demographic Parity Ratio (Female/Male): {demographic_parity_ratio:.2f}",
+                   style={"color": "#FFFFFF" if dark_mode else "#000000", "textAlign": "center"}),
             html.P(f"XGBoost Model R² Score: {r2:.2f}",
                    style={"color": "#FFFFFF" if dark_mode else "#000000", "textAlign": "center"})
         ])
@@ -457,13 +468,14 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
 
     # Model Insights Tab
     elif active_tab == "tab-model":
-        sample_index = 0  # For demonstration, use the first record
+        # For demonstration, compute insights for the first record
+        sample_index = 0
         sample = df_merged.iloc[[sample_index]]
         sample_features = sample[features]
         prediction = model.predict(sample_features)[0]
-
-        explanation_text = f"Predicted Final Grade: {prediction:.1f}\n"
-        if shap is not None:
+        explanation_text = f"Predicted Final Grade: {prediction:.1f}\n\n"
+        # Append SHAP global summary
+        try:
             shap_summary = "Global Feature Importance (mean absolute SHAP values):\n"
             shap_mean_abs = [np.abs(shap_values.values[:, i]).mean() for i in range(len(features))]
             global_shap = pd.DataFrame({
@@ -472,15 +484,22 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
             }).sort_values(by='Mean Absolute SHAP Value', ascending=False)
             shap_summary += global_shap.to_string(index=False)
             explanation_text += shap_summary
-
-        if lime_explainer is not None:
+        except Exception as e:
+            explanation_text += "Error computing SHAP summary: " + str(e)
+        # Append LIME explanation for the sample instance
+        try:
             lime_exp = lime_explainer.explain_instance(sample_features.values[0], model.predict, num_features=4)
             explanation_text += "\n\nLocal Explanation (LIME):\n" + str(lime_exp.as_list())
-
+        except Exception as e:
+            explanation_text += "\n\nError computing LIME explanation: " + str(e)
+        # Build the insights panel with interactive graphs as well
         model_panel = dbc.Card(
             dbc.CardBody([
                 html.H5("AI Model Insights", className="card-title"),
-                html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"})
+                html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"}),
+                html.Br(),
+                dcc.Graph(figure=shap_fig, config={"displayModeBar": False}),
+                dcc.Graph(figure=lime_fig, config={"displayModeBar": False})
             ]),
             color="secondary", inverse=True,
             style={"boxShadow": "0 4px 12px rgba(0,0,0,0.25)", "borderRadius": "10px"}
