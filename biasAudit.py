@@ -466,20 +466,18 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         ])
         return dbc.Container(fairness_metrics)
 
-    # Model Insights Tab Callback Section
     # Model Insights Tab
     elif active_tab == "tab-model":
         try:
-            sample_index = 0  # For demonstration, use the first record
+            # For demonstration, compute insights for the first record
+            sample_index = 0
             sample = df_merged.iloc[[sample_index]]
             sample_features = sample[features]
             prediction = model.predict(sample_features)[0]
-
             explanation_text = f"Predicted Final Grade: {prediction:.1f}\n\n"
-
-            if shap is not None:
+            # Append SHAP global summary
+            try:
                 shap_summary = "Global Feature Importance (mean absolute SHAP values):\n"
-                # Compute mean absolute SHAP values for each feature
                 shap_mean_abs = [np.abs(shap_values.values[:, i]).mean() for i in range(len(features))]
                 global_shap = pd.DataFrame({
                     'Feature': features,
@@ -487,27 +485,39 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
                 }).sort_values(by='Mean Absolute SHAP Value', ascending=False)
                 shap_summary += global_shap.to_string(index=False)
                 explanation_text += shap_summary + "\n\n"
-
-            if lime_explainer is not None:
+            except Exception as e:
+                explanation_text += "Error computing SHAP summary: " + str(e) + "\n\n"
+            # Append LIME explanation for the sample instance
+            try:
                 lime_exp = lime_explainer.explain_instance(
                     sample_features.values[0], model.predict, num_features=4
                 )
                 explanation_text += "Local Explanation (LIME):\n" + str(lime_exp.as_list())
+            except Exception as e:
+                explanation_text += "Error computing LIME explanation: " + str(e)
 
             model_panel = dbc.Card(
                 dbc.CardBody([
                     html.H5("AI Model Insights", className="card-title"),
-                    html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"})
+                    html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"}),
+                    html.Br(),
+                    dcc.Graph(figure=shap_fig, config={"displayModeBar": False}),
+                    dcc.Graph(figure=lime_fig, config={"displayModeBar": False})
                 ]),
                 color="secondary", inverse=True,
                 style={"boxShadow": "0 4px 12px rgba(0,0,0,0.25)", "borderRadius": "10px"}
             )
-            return dbc.Container([model_panel])
-
+            # Wrap the card in a container with a fixed height and vertical scrolling
+            return dbc.Container(
+                [model_panel],
+                style={"height": "80vh", "overflowY": "auto", "paddingTop": "20px"}
+            )
         except Exception as e:
-            # If there's an error, show it so you can debug instead of a blank page
             error_message = f"Error in Model Insights: {str(e)}"
-            return dbc.Container([html.Pre(error_message, style={"color": "red", "whiteSpace": "pre-wrap"})])
+            return dbc.Container(
+                [html.Pre(error_message, style={"color": "red", "whiteSpace": "pre-wrap"})],
+                style={"height": "80vh", "overflowY": "auto", "paddingTop": "20px"}
+            )
 
     return html.Div("No tab selected", className="text-center")
 
