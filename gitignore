@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment directories
+.venv/
+env/
+venv/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Optional: Ignore log files and build artifacts
+*.log
+*.tmp
+
+# If the following files are generated (outputs), ignore them:
+# Uncomment the lines below if these files are artifacts that can be re-generated.
+# altair_final_grade_distribution.html
+# altair_layered_chart.html
+# final_grades_comparison.html
+# plotly_scatter_interactive.html
+# avg_final_grade_by_gender.png
+# multifigure_matplotlib.png
+# pair_plot_grades_studytime.png
+# seaborn_pairplot.png
+# violin_balanced.png
