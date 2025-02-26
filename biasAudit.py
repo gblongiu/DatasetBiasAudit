@@ -9,8 +9,8 @@ from sklearn.utils import resample
 # -------------------------------
 # Data Loading and Preprocessing
 # -------------------------------
-por_path = "/Users/gabriellong/PycharmProjects/DatasetBiasAudit/student/student-por.csv"
-mat_path = "/Users/gabriellong/PycharmProjects/DatasetBiasAudit/student/student-mat.csv"
+por_path = "student/student-por.csv"   # Updated to relative path
+mat_path = "student/student-mat.csv"     # Updated to relative path
 df_por = pd.read_csv(por_path, sep=";")
 df_math = pd.read_csv(mat_path, sep=";")
 common_columns = ['school', 'sex', 'age', 'address', 'famsize', 'Pstatus',
