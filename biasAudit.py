@@ -495,12 +495,13 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
                 explanation_text += "Error computing LIME explanation: " + str(e)
 
             # Build an insights panel with explanation text above the graphs
-            explanation_component = html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"})
-            # Arrange the two graphs side by side using dbc.Row and dbc.Col
+            explanation_component = html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px",
+                                                                      "marginBottom": "10px"})
+            # Arrange the two graphs side by side using dbc.Row and dbc.Col with reduced top margin
             graphs_row = dbc.Row([
                 dbc.Col(dcc.Graph(figure=shap_fig, config={"displayModeBar": False}), md=6),
                 dbc.Col(dcc.Graph(figure=lime_fig, config={"displayModeBar": False}), md=6)
-            ], style={"marginTop": "20px"})
+            ], style={"marginTop": "10px"})
 
             model_panel = dbc.Card(
                 dbc.CardBody([
@@ -509,10 +510,11 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
                     graphs_row
                 ]),
                 color="secondary", inverse=True,
-                style={"boxShadow": "0 4px 12px rgba(0,0,0,0.25)", "borderRadius": "10px", "marginBottom": "20px"}
+                style={"boxShadow": "0 4px 12px rgba(0,0,0,0.25)", "borderRadius": "10px", "marginTop": "10px",
+                       "marginBottom": "20px"}
             )
-            # Return the model insights card inside a container that auto-adjusts its height
-            return dbc.Container([model_panel])
+            # Return the model insights card inside a container
+            return dbc.Container([model_panel], style={"marginTop": "0px"})
         except Exception as e:
             error_message = f"Error in Model Insights: {str(e)}"
             return dbc.Container(
