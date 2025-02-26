@@ -467,43 +467,47 @@ def render_tab_content(active_tab, selected_subject, selected_gender, selected_s
         return dbc.Container(fairness_metrics)
 
     # Model Insights Tab Callback Section
+    # Model Insights Tab
     elif active_tab == "tab-model":
-        sample_index = 0  # For demonstration, use the first record
-        sample = df_merged.iloc[[sample_index]]
-        sample_features = sample[features]
-        prediction = model.predict(sample_features)[0]
+        try:
+            sample_index = 0  # For demonstration, use the first record
+            sample = df_merged.iloc[[sample_index]]
+            sample_features = sample[features]
+            prediction = model.predict(sample_features)[0]
 
-        explanation_text = f"Predicted Final Grade: {prediction:.1f}\n"
-        if shap is not None:
-            shap_summary = "Global Feature Importance (mean absolute SHAP values):\n"
-            shap_mean_abs = [np.abs(shap_values.values[:, i]).mean() for i in range(len(features))]
-            global_shap = pd.DataFrame({
-                'Feature': features,
-                'Mean Absolute SHAP Value': shap_mean_abs
-            }).sort_values(by='Mean Absolute SHAP Value', ascending=False)
-            shap_summary += global_shap.to_string(index=False)
-            explanation_text += shap_summary
+            explanation_text = f"Predicted Final Grade: {prediction:.1f}\n\n"
 
-        if lime_explainer is not None:
-            lime_exp = lime_explainer.explain_instance(sample_features.values[0], model.predict, num_features=4)
-            explanation_text += "\n\nLocal Explanation (LIME):\n" + str(lime_exp.as_list())
+            if shap is not None:
+                shap_summary = "Global Feature Importance (mean absolute SHAP values):\n"
+                # Compute mean absolute SHAP values for each feature
+                shap_mean_abs = [np.abs(shap_values.values[:, i]).mean() for i in range(len(features))]
+                global_shap = pd.DataFrame({
+                    'Feature': features,
+                    'Mean Absolute SHAP Value': shap_mean_abs
+                }).sort_values(by='Mean Absolute SHAP Value', ascending=False)
+                shap_summary += global_shap.to_string(index=False)
+                explanation_text += shap_summary + "\n\n"
 
-        model_panel = dbc.Card(
-            dbc.CardBody([
-                html.H5("AI Model Insights", className="card-title"),
-                html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"})
-            ]),
-            color="secondary",
-            inverse=True,
-            style={
-                "boxShadow": "0 4px 12px rgba(0,0,0,0.25)",
-                "borderRadius": "10px",
-                "margin": "0",
-                "padding": "10px"
-            }
-        )
-        # Return a container with no extra margin/padding so the content is immediately visible
-        return dbc.Container(model_panel, style={"margin": "0", "padding": "0"})
+            if lime_explainer is not None:
+                lime_exp = lime_explainer.explain_instance(
+                    sample_features.values[0], model.predict, num_features=4
+                )
+                explanation_text += "Local Explanation (LIME):\n" + str(lime_exp.as_list())
+
+            model_panel = dbc.Card(
+                dbc.CardBody([
+                    html.H5("AI Model Insights", className="card-title"),
+                    html.Pre(explanation_text, style={"whiteSpace": "pre-wrap", "fontSize": "14px"})
+                ]),
+                color="secondary", inverse=True,
+                style={"boxShadow": "0 4px 12px rgba(0,0,0,0.25)", "borderRadius": "10px"}
+            )
+            return dbc.Container([model_panel])
+
+        except Exception as e:
+            # If there's an error, show it so you can debug instead of a blank page
+            error_message = f"Error in Model Insights: {str(e)}"
+            return dbc.Container([html.Pre(error_message, style={"color": "red", "whiteSpace": "pre-wrap"})])
 
     return html.Div("No tab selected", className="text-center")
 
