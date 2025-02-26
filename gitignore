@@ -15,6 +15,9 @@ Thumbs.db
 # Optional: Ignore log files and build artifacts
 *.log
 *.tmp
+*.png
+*.html
+.git
 
 # If the following files are generated (outputs), ignore them:
 # Uncomment the lines below if these files are artifacts that can be re-generated.
